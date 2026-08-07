@@ -45,4 +45,4 @@
 ## 环境依赖
 脚本内置自动修复，首次运行缺失组件会自动安装；手动安装命令：
 ```bash
-pkg update && pkg install dialog qemu-system-aarch64 qemu-system-x86_64-headless -y
+pkg update && pkg install dialog qemu-system-aarch64-headless qemu-system-x86_64-headless qemu-utils -y
