@@ -1,48 +1,38 @@
-# Termux-QEMU-VM-Manager
-一款基于 dialog 图形弹窗的 Termux QEMU 虚拟机一键管理脚本，纯 Bash 编写，**无需 Root**。
-支持 ARM64 / x86_64 双架构虚拟机，可视化配置磁盘、镜像、内存、CPU、VNC、网络；自动校验依赖、固件完整性，一键保存/加载多套虚拟机配置，内置磁盘校验、**虚拟机独立日志**、进程清理等实用功能
+# Termux QEMU VM Manager 图形化虚拟机管理脚本
+## 一、项目概述
+### 1. 脚本简介
+`termux-qemu-tool.sh` 是一套完全基于 `bash + dialog` 开发的终端图形化 QEMU 虚拟机一键管理工具，专门适配 Android 手机 Termux ARM64 原生环境。
+- 无需手动记忆、拼接超长复杂的 QEMU 启动参数；
+- 同时支持 **aarch64(ARM64)**、**x86_64(AMD64)** 两种架构虚拟机；
+- 非 Root 权限完整可用，仅网桥 tap 网络需要 Root；
+- 集成磁盘管理、UEFI 固件、VNC 远程桌面、端口转发、快照、日志、权限修复、文件迁移全套功能；
+- 内置环境自检、依赖自动安装、固件完整性校验、异常弹窗报错提示
 
-## 核心特性
-### 架构支持
-1. aarch64(ARM64)
-- 原生 virt,gic-version=3 主板，virtio-gpu-pci 高性能显卡
-- 系统自带 edk2-aarch64 UEFI 固件，支持自定义 vars.fd
-- 一键生成 64M 空白 UEFI vars.fd，自动跟随磁盘/ISO 同名同目录
-- CPU 可选 max(自动最优) / cortex-a76 ARM 专用型号
+### 2. 文件目录自动创建
+脚本首次运行会自动生成以下工作目录，无需手动新建：
+| 目录路径 | 用途说明 |
+|--------|--------|
+| `$HOME/vm_profiles` | 虚拟机配置文件存放目录，保存所有自定义硬件参数 `.conf` |
+| `$HOME/qemu` | 虚拟机私有文件目录，推荐存放 qcow2 磁盘、UEFI vars.fd 固件 |
+| `$HOME/qemu-run.log` | 全局总运行日志 |
+| `/tmp/qemu-monitor.sock` | QEMU 调试监控通道套接字 |
+| `/tmp/snap.tmp` | 快照临时缓存文件 |
 
-2. x86_64(AMD64)
-- 双主板自由切换：pc(i440fx Legacy BIOS，安装系统首选) / q35(UEFI OVMF)
-- pc 主板强制 cirrus-vga 兼容显卡，杜绝黑屏；q35 使用 virtio-vga
-- q35 主板依赖 OVMF_CODE + OVMF_VARS，支持自定义外置固件文件
-- CPU 默认 qemu64
+### 3. 错误码定义（脚本内置）
+| 错误码 | 含义 | 一键修复命令 |
+|--------|------|------------|
+| `EXIT_OK=0` | 程序正常退出 | - |
+| `EXIT_USER_CANCEL=1` | 用户手动取消操作 | - |
+| `EXIT_MISS_DEPEND=2` | 缺少运行依赖包 | `pkg update && pkg install dialog qemu-system-aarch64-headless qemu-system-x86_64-headless qemu-utils -y` |
+| `EXIT_FILE_MISS=3` | 关键文件缺失（固件/镜像/磁盘） | 检查文件路径，重装对应 qemu 包 |
+| `EXIT_FILE_CORRUPT=4` | UEFI固件损坏 / qcow2磁盘损坏 | `qemu-img check -r all 磁盘路径` 或 `pkg reinstall qemu-system-xxx-headless` |
+| `EXIT_QEMU_FAIL=5` | QEMU 进程启动失败 | 查看运行日志排查参数、文件权限 |
+| `EXIT_INVALID_PARAM=6` | 硬件参数非法（内存/端口/显卡不兼容） | 在菜单重新调整硬件配置 |
 
-### Dialog 全图形可视化操作
-1. 文件选择器：选取 qcow2 磁盘 / ISO 镜像 / ARM64 vars.fd / x86 OVMF 固件
-2. 一键新建 qcow2 磁盘：可选 10G/20G/30G/40G/50G/60G/80G/100G
-3. UEFI vars 生成工具，自动和当前磁盘/镜像同目录同名
-4. 硬件可视化配置：CPU型号、内存(1024M~3072M)、CPU核心(1~4核)、虚拟显卡
-5. VNC 全套设置：监听地址(127.0.0.1 / 0.0.0.0)、显示编号0-9、最长8位访问密码
-6. 网络配置：user NAT(无Root可用) / tap桥接(需要Root)、自定义双DNS、SSH端口转发
-7. 配置持久化：多套虚拟机硬件参数完整保存/加载
-8. qcow2 磁盘完整性校验、实时查看虚拟机专属运行日志
+---
 
-### 自动化检测与容错机制
-1. 程序启动自动 POST 环境自检
-   - 检测 dialog、qemu-system-aarch64、qemu-system-x86_64 二进制
-   - 测试 QEMU 程序可用性，校验系统内置 ARM/x86 UEFI 固件存在性
-   - 缺失依赖/损坏组件自动执行 pkg 更新重装修复
-2. ARM64 UEFI 固件大小校验，识别损坏固件并给出修复指令
-3. 启动虚拟机前检测后台残留 QEMU 进程，可一键全部杀死，避免磁盘占用锁
-4. 全局错误捕获 trap，程序崩溃自动记录报错行号+错误码写入全局日志
-5. 路径智能检测：磁盘/ISO 存放在 /storage/emulated/0 时自动弹出性能提示弹窗
-6. 弹窗配色极简：仅红色加粗标题用于警示，其余文字默认黑白，视觉清爽
-
-### 性能与备份提示弹窗逻辑
-- 只要选中的虚拟磁盘或 ISO 在内部共享存储，每次进入主菜单自动弹出提示框
-- 建议迁移至 $HOME 私有目录大幅提升读写速度
-- 重要风险提醒：卸载 Termux 会清空 $HOME 全部文件，虚拟机文件提前备份至 /storage/emulated/0/VM_Backup/
-
-## 环境依赖
-脚本内置自动修复，首次运行缺失组件会自动安装；手动安装命令：
+## 二、完整依赖说明 & 一键安装命令
+### 1. 全部依赖包安装指令
+脚本启动自检时如果检测到缺失工具，会弹窗提示执行下面这条完整安装命令：
 ```bash
 pkg update && pkg install dialog qemu-system-aarch64-headless qemu-system-x86_64-headless qemu-utils -y
