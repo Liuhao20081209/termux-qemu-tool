@@ -74,12 +74,13 @@ select_iso_file(){
             start_path="$sel"
             continue
         fi
-        if [[ "$sel" == *.iso ]]; then
-            echo "$sel"
-            return
-        else
-            msgbox "仅允许选择后缀为.iso的系统镜像"
-        fi
+if [[ "$sel" == *.iso || "$sel" == *.img || "$sel" == *.bin ]]; then
+    echo "$sel"
+    return
+else
+    msgbox "允许后缀：.iso / .img / .bin"
+fi
+
     done
 }
 get_vm_log_path(){
