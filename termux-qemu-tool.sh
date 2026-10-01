@@ -50,39 +50,34 @@ select_qcow2_disk(){
     local start_path="$STORAGE_ROOT"
     while true; do
         local sel
-        sel=$(dialog --backtitle "$BACKTITLE" --title "选择虚拟磁盘(*.qcow2)" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
+        sel=$(dialog --backtitle "$BACKTITLE" --title "选择虚拟磁盘(任意镜像文件)" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
         [ -z "$sel" ] && echo "" && return
         if [ -d "$sel" ]; then
             start_path="$sel"
             continue
         fi
-        if [[ "$sel" == *.qcow2 ]]; then
-            echo "$sel"
-            return
-        else
-            msgbox "仅允许选择后缀为.qcow2的磁盘文件"
-        fi
+        # 不再校验后缀，直接返回选中文件
+        echo "$sel"
+        return
     done
 }
+
 select_iso_file(){
     local start_path="$STORAGE_ROOT"
     while true; do
         local sel
-        sel=$(dialog --backtitle "$BACKTITLE" --title "选择镜像*.iso" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
+        sel=$(dialog --backtitle "$BACKTITLE" --title "选择光驱镜像(任意文件)" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
         [ -z "$sel" ] && echo "" && return
         if [ -d "$sel" ]; then
             start_path="$sel"
             continue
         fi
-if [[ "$sel" == *.iso || "$sel" == *.img || "$sel" == *.bin ]]; then
-    echo "$sel"
-    return
-else
-    msgbox "允许后缀：.iso / .img / .bin"
-fi
-
+        # 不再校验后缀，直接返回选中文件
+        echo "$sel"
+        return
     done
 }
+
 get_vm_log_path(){
     if [[ -n "$HDA" && -f "$HDA" ]]; then
         local disk_dir=$(dirname "$HDA")
