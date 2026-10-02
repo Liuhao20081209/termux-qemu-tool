@@ -6,11 +6,17 @@ EXIT_FILE_MISS=3
 EXIT_FILE_CORRUPT=4
 EXIT_QEMU_FAIL=5
 EXIT_INVALID_PARAM=6
+
+LOCAL_VERSION="20261002"
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
+REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
+REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
+# =============================================================
 STORAGE_ROOT="/storage/emulated/0"
 CONF_DIR="$HOME/vm_profiles"
 GLOBAL_LOG="$HOME/qemu-run.log"
 mkdir -p "$CONF_DIR"
-BACKTITLE="QEMU VM Manager for Termux "
+BACKTITLE="QEMU VM Manager for Termux v1.1"
 UEFI_CODE="$PREFIX/share/qemu/edk2-aarch64-code.fd"
 SYS_X86_OVMF_CODE="$PREFIX/share/qemu/edk2-x86_64-code.fd"
 SYS_X86_OVMF_VARS="$PREFIX/share/qemu/edk2-x86_64-vars.fd"
@@ -22,6 +28,7 @@ CPU="qemu64"
 SMP=2
 MEM=2048
 GPU="cirrus-vga"
+SOUND_DEV="none"
 HDA=""
 CDROM=""
 UEFI_VARS=""
@@ -32,6 +39,87 @@ NET_MODE="user"
 DNS_MAIN="223.5.5.5"
 DNS_ALT="8.8.8.8"
 SSH_FORWARD_PORT="2222"
+CUSTOM_ARGS=""
+EXTRA_DISKS=()
+
+
+check_update() {
+    echo ""
+    echo -e "\033[34m正在检测版本更新...\033[0m"
+    local REMOTE_VERSION
+    REMOTE_VERSION=$(curl -fsSL --max-time 8 "$REMOTE_VERSION_URL" 2>/dev/null)
+
+    if [[ -z "$REMOTE_VERSION" ]]; then
+        echo -e "\033[33m⚠ 无法连接更新服务器，跳过版本检查\033[0m"
+        return 2
+    fi
+
+    if [[ ! "$REMOTE_VERSION" =~ ^[0-9]{8}$ ]]; then
+        echo -e "\033[33m⚠ 远程版本文件格式异常，跳过版本检查\033[0m"
+        return 3
+    fi
+
+    if [[ "$REMOTE_VERSION" -gt "$LOCAL_VERSION" ]];then
+        echo -e "\033[32m 发现新版本！本地:$LOCAL_VERSION 远程:$REMOTE_VERSION\033[0m"
+        read -p "是否下载更新脚本？更新前会备份旧文件 [y/N] " opt
+        if [[ "$opt" == "y" || "$opt" == "Y" ]];then
+            local SCRIPT_PATH="$0"
+            local TMP_FILE="./vmqemu.tmp"
+            local TMP_SHA="./vmqemu_sha.tmp"
+            local BACKUP_FILE="${SCRIPT_PATH}.bak.${LOCAL_VERSION}"
+
+            rm -f "$TMP_FILE" "$TMP_SHA"
+            cp "$SCRIPT_PATH" "$BACKUP_FILE"
+            echo -e "\033[36m已备份旧脚本至：$BACKUP_FILE\033[0m"
+
+            if ! curl -fsSL --max-time 10 "$REMOTE_SHA256_URL" -o "$TMP_SHA" 2>/dev/null;then
+                rm -f "$TMP_FILE" "$TMP_SHA"
+                echo -e "\033[31m 无法获取SHA256校验文件，终止更新\033[0m"
+                return 5
+            fi
+
+            if ! curl -fsSL --max-time 12 "$REMOTE_SCRIPT_URL" -o "$TMP_FILE" 2>/dev/null;then
+                rm -f "$TMP_FILE" "$TMP_SHA"
+                echo -e "\033[31m 下载新版本脚本失败，网络问题，本次不更新\033[0m"
+                return 4
+            fi
+
+            if [[ ! -s "$TMP_FILE" ]];then
+                rm -f "$TMP_FILE" "$TMP_SHA"
+                echo -e "\033[31m 下载得到空文件，更新终止\033[0m"
+                return 6
+            fi
+
+            echo -e "\033[34m正在校验文件SHA‑256哈希...\033[0m"
+            if ! sha256sum --status -c "$TMP_SHA" 2>/dev/null; then
+                rm -f "$TMP_FILE" "$TMP_SHA"
+                echo -e "\033[31m SHA-256哈希校验失败！文件可能被篡改或者损坏\033[0m"
+                return 7
+            fi
+            echo -e "\033[32m SHA‑256校验通过\033[0m"
+
+            mv "$TMP_FILE" "$SCRIPT_PATH"
+            chmod +x "$SCRIPT_PATH"
+            rm -f "$TMP_SHA"
+            echo -e "\033[32m 更新文件写入完成\033[0m"
+
+            read -p "是否立刻重启脚本加载新版本？(内存配置将会丢失) [y/N] " reboot_opt
+            if [[ "$reboot_opt" == "y" || "$reboot_opt" == "Y" ]];then
+                echo -e "\033[36m正在重新启动脚本...\033[0m"
+                exec "$SCRIPT_PATH"
+            else
+                echo -e "\033[36m 将继续运行旧版本，请手动退出重新运行生效\033[0m"
+            fi
+        else
+            echo -e "\033[36m 跳过更新，可以稍后在UPD菜单手动更新\033[0m"
+        fi
+    else
+        echo -e "\033[32m 当前已是最新版本 ($LOCAL_VERSION)\033[0m"
+    fi
+    sleep 1.2
+    return 0
+}
+
 error_handler() {
     local ret=$?
     local line=$1
@@ -43,9 +131,11 @@ error_handler() {
     exit $ret
 }
 trap 'error_handler $LINENO' ERR
+
 msgbox(){
     dialog --backtitle "$BACKTITLE" --title "提示" --msgbox "$1" 9 58 || true
 }
+
 select_qcow2_disk(){
     local start_path="$STORAGE_ROOT"
     while true; do
@@ -56,7 +146,6 @@ select_qcow2_disk(){
             start_path="$sel"
             continue
         fi
-        # 不再校验后缀，直接返回选中文件
         echo "$sel"
         return
     done
@@ -66,13 +155,12 @@ select_iso_file(){
     local start_path="$STORAGE_ROOT"
     while true; do
         local sel
-        sel=$(dialog --backtitle "$BACKTITLE" --title "选择光驱镜像(任意文件)" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
+        sel=$(dialog --backtitle "$BACKTITLE" --title "选择CDROM" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
         [ -z "$sel" ] && echo "" && return
         if [ -d "$sel" ]; then
             start_path="$sel"
             continue
         fi
-        # 不再校验后缀，直接返回选中文件
         echo "$sel"
         return
     done
@@ -87,6 +175,7 @@ get_vm_log_path(){
         echo "$GLOBAL_LOG"
     fi
 }
+
 env_check_text() {
     RED='\033[0;31m'
     GREEN='\033[0;32m'
@@ -149,6 +238,7 @@ env_check_text() {
     echo -e "${CYAN}======================================================${RESET}"
     if [[ ${#missing[@]} -eq 0 && ${#broken[@]} -eq 0 ]]; then
         echo -e "${GREEN}POST COMPLETE: All components ready.${RESET}"
+        check_update
         echo -e "${GREEN}Launching graphical interface...${RESET}"
         sleep 0.8
         return 0
@@ -205,14 +295,16 @@ env_check_text() {
         echo -e "${RED}[ERROR]: 仍然存在问题: ${still_broken[*]}${RESET}"
         echo -e "${YELLOW}请手动检查并修复:${RESET}"
         echo -e "${BOLD}pkg update && pkg install ${required_pkgs[*]} -y${RESET}"
-        echo -e "${YELLOW}或重新安装 Termux 的 QEMU 包${RESET}"
+        echo -e "${YELLOW}或重新安装Termux的QEMU包${RESET}"
         exit $EXIT_MISS_DEPEND
     fi
     echo ""
     echo -e "${GREEN}All issues resolved.${RESET}"
+    check_update
     echo -e "${GREEN}Starting manager...${RESET}"
     sleep 1
 }
+
 create_qcow2_disk(){
 local CAP_SEL
 CAP_SEL=$(dialog --backtitle "$BACKTITLE" --title "新建虚拟磁盘" --radiolist \
@@ -250,6 +342,7 @@ msgbox "虚拟磁盘创建完成且已选中
 路径：$DISK_PATH
 最大容量上限：$CAP_SEL"
 }
+
 create_empty_vars_fd(){
 local ARCH_TAG="$1"
 local FD_DIR FD_BN FD_PATH
@@ -284,6 +377,7 @@ elif [[ "$ARCH_TAG" == "x86_64" ]]; then
 路径：$FD_PATH"
 fi
 }
+
 check_qemu_running(){
 if pgrep -f qemu-system >/dev/null 2>&1;then
     dialog --backtitle "$BACKTITLE" --title "提示" --yesno \
@@ -295,6 +389,7 @@ if pgrep -f qemu-system >/dev/null 2>&1;then
     fi
 fi
 }
+
 check_uefi_firmware(){
     if [[ "$TARGET_ARCH" == "aarch64" ]]; then
         if [ ! -f "$UEFI_CODE" ]; then
@@ -332,13 +427,10 @@ check_uefi_firmware(){
             msgbox "[Error] x86 OVMF_CODE缺失，重启脚本自动安装qemu-x86_64-headless包修复"
             return $EXIT_FILE_MISS
         fi
-        if [ ! -f "$USE_X86_VARS" ]; then
-            msgbox "[Error] x86 OVMF_VARS不存在，可按F生成空白vars文件"
-            return $EXIT_FILE_MISS
-        fi
     fi
     return $EXIT_OK
 }
+
 choose_arch(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "选择CPU架构" --radiolist \
@@ -348,15 +440,19 @@ choose_arch(){
 2>&1 >/dev/tty) || true
     [ -z "$SEL" ] && return
     TARGET_ARCH="$SEL"
+    EXTRA_DISKS=()
+    CUSTOM_ARGS=""
     if [[ "$TARGET_ARCH" == "aarch64" ]];then
         MACHINE="virt,gic-version=3"
         GPU="virtio-gpu-pci"
+        SOUND_DEV="none"
         X86_OVMF_CODE=""
         X86_OVMF_VARS=""
         CPU="max"
     else
         MACHINE="pc"
         GPU="cirrus-vga"
+        SOUND_DEV="none"
         UEFI_VARS=""
         CPU="qemu64"
         if [[ -f "$SYS_X86_OVMF_CODE" && -f "$SYS_X86_OVMF_VARS" ]];then
@@ -366,6 +462,7 @@ choose_arch(){
     fi
     msgbox "架构切换完成，硬件参数自动重置适配"
 }
+
 choose_x86_machine(){
     if [[ "$TARGET_ARCH" != "x86_64" ]];then
         msgbox "仅x86_64架构支持切换主板"
@@ -373,8 +470,8 @@ choose_x86_machine(){
     fi
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "x86主板选择" --radiolist \
-"pc=i440fx传统BIOS，无OVMF固件限制，适合系统安装
-q35=UEFI主板，需要OVMF固件，已装好UEFI系统使用" 16 66 2 \
+"pc=i440fx传统BIOS，无OVMF固件限制
+q35=UEFI主板，需要OVMF固件" 16 66 2 \
 "pc" "i440fx Legacy BIOS [安装系统首选]" ON \
 "q35" "q35 UEFI主板 [启动系统首选]" OFF \
 2>&1 >/dev/tty) || true
@@ -387,17 +484,19 @@ q35=UEFI主板，需要OVMF固件，已装好UEFI系统使用" 16 66 2 \
     fi
     msgbox "主板切换完成，显卡自动适配"
 }
+
 choose_cpu(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "CPU型号" --radiolist \
 "max自动适配最优，cortex-a76仅ARM可用" 14 62 3 \
-"max" "max 自动适配（首选）" ON \
+"max" "max 自动适配 [首选]" ON \
 "cortex-a76" "cortex-a76 ARM专用" OFF \
 "qemu64" "qemu64 x86专用" OFF \
 2>&1 >/dev/tty) || true
     [ -z "$SEL" ] && return
     CPU="$SEL"
 }
+
 choose_memory(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "分配内存 MB" --radiolist \
@@ -410,10 +509,11 @@ choose_memory(){
     [ -z "$SEL" ] && return
     MEM="$SEL"
 }
+
 choose_smp(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "CPU核心数" --radiolist \
-"核心过多会导致性能下降，1-2核最稳" 14 56 4 \
+"核心过多会导致性能下降，1‑2核最稳" 14 56 4 \
 "1" "1 核" OFF \
 "2" "2 核（推荐）" ON \
 "3" "3 核" OFF \
@@ -422,38 +522,54 @@ choose_smp(){
     [ -z "$SEL" ] && return
     SMP="$SEL"
 }
+
 choose_gpu(){
     local SEL
     if [[ "$TARGET_ARCH" == "x86_64" && "$MACHINE" == "pc" ]];then
         SEL=$(dialog --backtitle "$BACKTITLE" --title "显卡" --radiolist \
-"pc主板仅cirrus-vga兼容，其他显卡可能导致黑屏" 14 56 1 \
-"cirrus-vga" "cirrus-vga 兼容模式(强制)" ON \
+"pc主板仅cirrus‑vga兼容，其他显卡可能导致黑屏" 14 56 1 \
+"cirrus‑vga" "cirrus‑vga 兼容模式(强制)" ON \
 2>&1 >/dev/tty) || true
     else
         SEL=$(dialog --backtitle "$BACKTITLE" --title "虚拟显卡(Graphics)" --radiolist \
-"ramfb [兼容]，virtio-gpu [性能]" 14 56 2 \
+"ramfb [兼容]，virtio‑gpu [性能]" 14 56 2 \
 "ramfb" "ramfb [兼容]" ON \
-"virtio-gpu-pci" "virtio-gpu-pci [性能]" OFF \
+"virtio‑gpu‑pci" "virtio‑gpu‑pci [性能]" OFF \
 2>&1 >/dev/tty) || true
     fi
     [ -z "$SEL" ] && return
     GPU="$SEL"
 }
+
+choose_sound(){
+    local SEL
+    SEL=$(dialog --backtitle "$BACKTITLE" --title "声卡设置" --radiolist \
+"Termux无pulseaudio，建议选择无声音" 14 56 2 \
+"none" "无声音[推荐]" ON \
+"ac97" "AC97声卡" OFF \
+2>&1 >/dev/tty) || true
+    [ -z "$SEL" ] && return
+    SOUND_DEV="$SEL"
+    msgbox "声卡设置已更新：$SOUND_DEV"
+}
+
 select_x86_ovmf_code(){
     local path
     path=$(dialog --backtitle "$BACKTITLE" --title "自定义x86 OVMF_CODE.fd" --fselect "$STORAGE_ROOT" 17 66 2>&1 >/dev/tty)
     if [[ -n "$path" ]]; then
         X86_OVMF_CODE="$path"
         MACHINE="q35"
-        GPU="virtio-vga"
+        GPU="virtio‑vga"
         msgbox "已使用自定义OVMF_CODE，自动切换q35主板"
     fi
 }
+
 select_x86_ovmf_vars(){
     local path
     path=$(dialog --backtitle "$BACKTITLE" --title "自定义x86 OVMF_VARS.fd" --fselect "$STORAGE_ROOT" 17 66 2>&1 >/dev/tty)
     [[ -n "$path" ]] && X86_OVMF_VARS="$path" && msgbox "已使用自定义OVMF_VARS覆盖系统固件"
 }
+
 vnc_setting_menu(){
 while true; do
     local SEL
@@ -481,7 +597,7 @@ while true; do
             VNC_DISPLAY="$TMP"
             msgbox "显示编号更新为:$VNC_DISPLAY"
         else
-            msgbox "仅允许0-9数字"
+            msgbox "仅允许0‑9数字"
         fi
     ;;
     3)
@@ -498,6 +614,7 @@ while true; do
     esac
 done
 }
+
 network_setting_menu(){
 while true; do
     local SEL
@@ -545,18 +662,102 @@ while true; do
     esac
 done
 }
+
+extra_disk_menu(){
+while true;do
+    local MENU_ITEMS=()
+    local idx=0
+    for fp in "${EXTRA_DISKS[@]}";do
+        MENU_ITEMS+=("$idx" "$(basename "$fp")")
+        idx=$((idx+1))
+    done
+    MENU_ITEMS+=("ADD" "添加附加磁盘")
+    MENU_ITEMS+=("CLEAR" "清空全部附加磁盘")
+    MENU_ITEMS+=("BACK" "返回")
+    SEL=$(dialog --backtitle "$BACKTITLE" --title "附加磁盘列表" --menu "" 18 70 10 "${MENU_ITEMS[@]}" 2>&1 >/dev/tty) || true
+    [[ $SEL == "BACK" || -z $SEL ]] && break
+    if [[ "$SEL" == "ADD" ]];then
+        fp=$(select_qcow2_disk)
+        [[ -n "$fp" && -f "$fp" ]] && EXTRA_DISKS+=("$fp")
+    elif [[ "$SEL" == "CLEAR" ]];then
+        if dialog --backtitle "$BACKTITLE" --title "确认" --yesno "确认清空全部附加磁盘？" 10 58;then
+            EXTRA_DISKS=()
+        fi
+    elif [[ "$SEL" =~ ^[0-9]+$ ]];then
+        if dialog --backtitle "$BACKTITLE" --title "确认删除" --yesno "移除 ${EXTRA_DISKS[$SEL]} ?" 10 60;then
+            unset EXTRA_DISKS[$SEL]
+            EXTRA_DISKS=("${EXTRA_DISKS[@]}")
+        fi
+    fi
+done
+}
+
+snapshot_menu(){
+    if [[ -z "$HDA" || ! "$HDA" =~ \.qcow2$ || ! -f "$HDA" ]];then
+        msgbox "快照仅支持qcow2主磁盘，请先选择主qcow2磁盘"
+        return
+    fi
+    while true;do
+        SEL=$(dialog --backtitle "$BACKTITLE" --title "快照管理｜$(basename "$HDA")" --menu "" 16 68 7 \
+"CREATE" "创建快照" "APPLY" "恢复快照" "DEL" "删除快照" "LIST" "列出快照" "BACK" "返回" 2>&1 >/dev/tty) || true
+        [[ $SEL == "BACK" || -z $SEL ]] && break
+        case $SEL in
+        CREATE)
+            SN=$(dialog --backtitle "$BACKTITLE" --title "快照名称" --inputbox "" 9 52 "snap_$(date +%s)" 2>&1 >/dev/tty) || true
+            [[ -z "$SN" ]] && continue
+            if qemu-img snapshot -c "$SN" "$HDA";then
+                msgbox "快照创建成功：$SN"
+            else
+                msgbox "快照创建失败"
+            fi
+        ;;
+        APPLY)
+            SN=$(dialog --backtitle "$BACKTITLE" --title "恢复快照名称" --inputbox "" 9 52 "" 2>&1 >/dev/tty) || true
+            [[ -z "$SN" ]] && continue
+            if qemu-img snapshot -a "$SN" "$HDA";then
+                msgbox "已恢复快照：$SN"
+            else
+                msgbox "恢复快照失败"
+            fi
+        ;;
+        DEL)
+            SN=$(dialog --backtitle "$BACKTITLE" --title "删除快照名称" --inputbox "" 9 52 "" 2>&1 >/dev/tty) || true
+            [[ -z "$SN" ]] && continue
+            if qemu-img snapshot -d "$SN" "$HDA";then
+                msgbox "已删除快照：$SN"
+            else
+                msgbox "删除快照失败"
+            fi
+        ;;
+        LIST)
+            OUT=$(qemu-img snapshot -l "$HDA")
+            msgbox "快照列表:
+$OUT"
+        ;;
+        esac
+    done
+}
+
+custom_args_menu(){
+    TMP=$(dialog --backtitle "$BACKTITLE" --title "自定义QEMU追加参数" --inputbox "高级选项，谨慎填写" 12 72 "$CUSTOM_ARGS" 2>&1 >/dev/tty) || true
+    CUSTOM_ARGS="$TMP"
+    msgbox "自定义参数已保存"
+}
+
 save_config(){
     local NAME
     NAME=$(dialog --backtitle "$BACKTITLE" --title "保存配置文件" --inputbox "输入配置名称" 9 48 2>&1 >/dev/tty) || true
     [ -z "$NAME" ] && return
     local CONF_PATH="$CONF_DIR/$NAME.conf"
-    cat > "$CONF_PATH" <<CFG
+    {
+cat <<CFG
 TARGET_ARCH=$TARGET_ARCH
 MACHINE=$MACHINE
 CPU=$CPU
 SMP=$SMP
 MEM=$MEM
 GPU=$GPU
+SOUND_DEV=$SOUND_DEV
 HDA=$HDA
 CDROM=$CDROM
 UEFI_VARS=$UEFI_VARS
@@ -570,9 +771,13 @@ NET_MODE=$NET_MODE
 DNS_MAIN=$DNS_MAIN
 DNS_ALT=$DNS_ALT
 SSH_FORWARD_PORT=$SSH_FORWARD_PORT
+CUSTOM_ARGS='$CUSTOM_ARGS'
+EXTRA_DISKS=(${EXTRA_DISKS[*]@Q})
 CFG
+    } > "$CONF_PATH"
     msgbox "配置已保存：$NAME"
 }
+
 load_config(){
     local FILES=()
     local LIST=()
@@ -592,6 +797,7 @@ load_config(){
     source "${FILES[$((SEL_IDX-1))]}"
     msgbox "配置已加载"
 }
+
 build_cmd(){
     CMD=()
     BOOT_ORDER=()
@@ -610,7 +816,7 @@ build_cmd(){
             return 1
         fi
         CMD=(qemu-system-aarch64)
-        CMD+=(-M "$MACHINE" -cpu "$CPU")
+        CMD+=(-M "$MACHINE" -cpu "$CPU" -accel "tcg,thread=multi")
         [[ ${#BOOT_ORDER[@]} -gt 0 ]] && CMD+=("${BOOT_ORDER[@]}")
         CMD+=(-drive "if=pflash,format=raw,readonly=on,file=$UEFI_CODE")
         [ -n "$UEFI_VARS" ] && CMD+=(-drive "if=pflash,format=raw,file=$UEFI_VARS")
@@ -637,35 +843,46 @@ build_cmd(){
                 USE_X86_VARS="$SYS_X86_OVMF_VARS"
             fi
             CMD+=(-drive "if=pflash,format=raw,readonly=on,file=$USE_X86_CODE")
-            CMD+=(-drive "if=pflash,format=raw,size=32M,file=$USE_X86_VARS")
+            CMD+=(-drive "if=pflash,format=raw,file=$USE_X86_VARS")
         fi
     fi
     CMD+=(
         -smp "$SMP"
         -m "$MEM"
         -device "$GPU"
-        -device qemu-xhci
-        -device usb-kbd
-        -device usb-tablet
+        -device qemu‑xhci
+        -device usb‑kbd
+        -device usb‑tablet
         -serial mon:stdio
     )
+    if [[ "$SOUND_DEV" != "none" ]];then
+        CMD+=(-audiodev "none,id=snd0" -device "${SOUND_DEV},audiodev=snd0")
+    fi
     [ -n "$HDA" ] && CMD+=(-drive "file=$HDA,if=virtio")
+    for fp in "${EXTRA_DISKS[@]}";do
+        [ -n "$fp" ] && [ -f "$fp" ] && CMD+=(-drive "file=$fp,if=virtio")
+    done
     [ -n "$CDROM" ] && CMD+=(-cdrom "$CDROM")
     local DNS_STR="dns=${DNS_MAIN},dns=${DNS_ALT}"
     local FWD_STR="hostfwd=tcp::${SSH_FORWARD_PORT}-:22"
     if [[ "$NET_MODE" == "user" ]]; then
         CMD+=(-netdev "user,id=net0,$FWD_STR,$DNS_STR")
-        CMD+=(-device virtio-net-pci,netdev=net0)
+        CMD+=(-device virtio‑net‑pci,netdev=net0)
     else
-        CMD+=(-netdev "tap,id=net0" -device virtio-net-pci,netdev=net0)
+        CMD+=(-netdev "tap,id=net0" -device virtio‑net‑pci,netdev=net0)
     fi
     local VNC_FULL="${VNC_LISTEN_ADDR}:${VNC_DISPLAY}"
     if [[ -n "$VNC_PASSWD" ]]; then
-        VNC_FULL+=",password"
+        VNC_FULL+=",password=${VNC_PASSWD}"
     fi
     CMD+=(-vnc "$VNC_FULL")
+    if [[ -n "$CUSTOM_ARGS" ]];then
+        read -ra extra_arr <<< "$CUSTOM_ARGS"
+        CMD+=("${extra_arr[@]}")
+    fi
     return 0
 }
+
 start_vm(){
     check_qemu_running
     if [[ -z "$HDA" ]];then
@@ -683,10 +900,12 @@ start_vm(){
     local VM_LOG=$(get_vm_log_path)
     dialog --backtitle "$BACKTITLE" --title "启动确认" --yesno "参数预览
 架构(Arch):$TARGET_ARCH 主板(Type):$MACHINE 内存(RAM):${MEM}M 核心(Cores):$SMP 显卡(Graphics):$GPU
+声卡:$SOUND_DEV
+附加磁盘数量:${#EXTRA_DISKS[@]}
 VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
 日志(Log)：$VM_LOG
 串口控制台(tty)：当前Termux终端窗口
-确认启动？" 20 76 || true
+确认启动？" 22 76 || true
     [ $? -ne 0 ] && return
     > "$VM_LOG"
     clear
@@ -694,10 +913,9 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
     echo "           QEMU 虚拟机运行终端"
     echo " VNC地址：$VNC_LISTEN_ADDR:$VNC_DISPLAY "
     echo " 串口日志：此窗口 | 日志文件位置：$VM_LOG"
-    echo " 终止虚拟机：在另一窗口执行 pkill qemu（可能会导致进程误杀）"
-    echo "             建议使用 kill -9 [PID] 进行针对性操作"
+    echo " 终止虚拟机：Ctrl+C"
     echo "=========================================================="
-    echo "时间：$(date '+%Y-%m-%d %H:%M:%S')" >> "$VM_LOG"
+    echo "时间：$(date '+%Y‑%m‑%d %H:%M:%S')" >> "$VM_LOG"
     echo "命令：${CMD[*]}" >> "$VM_LOG"
     echo "==========================================================" >> "$VM_LOG"
     "${CMD[@]}" 2>&1 | tee "$VM_LOG"
@@ -705,6 +923,7 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
     echo "\n"
     read -n1 -p "按任意键返回主页面"
 }
+
 check_qcow2(){
     if [[ -z "$HDA" ]];then
         msgbox "先选择虚拟磁盘文件（*.qcow2）"
@@ -715,10 +934,12 @@ check_qcow2(){
     qemu-img check "$HDA"
     read -n1 -p "校验完成，按任意键返回"
 }
+
 view_log(){
     local VM_LOG=$(get_vm_log_path)
     dialog --backtitle "$BACKTITLE" --title "运行日志" --tailbox "$VM_LOG" 21 72
 }
+
 main_menu(){
     while true;do
         DISK_PREVIEW=$(basename "$HDA" 2>/dev/null)
@@ -758,18 +979,19 @@ main_menu(){
             MENU_ITEMS+=("1a" "切换x86主板 pc(i440fx)/q35")
         fi
         MENU_ITEMS+=(
-            "2" "选择 qcow2 虚拟磁盘 [图形界面]"
+            "2" "选择 qcow2 虚拟磁盘 "
             "D" "新建 qcow2 虚拟磁盘"
-            "3" "选择 iso 安装镜像 [图形界面]"
+            "E" "附加多磁盘管理(${#EXTRA_DISKS[@]})"
+            "3" "选择 iso 安装镜像 "
         )
         if [[ "$TARGET_ARCH" == "aarch64" ]]; then
-            MENU_ITEMS+=("4" "选择 ARM64 UEFI vars.fd [图形界面]")
+            MENU_ITEMS+=("4" "选择 ARM64 UEFI vars.fd ")
         fi
         MENU_ITEMS+=("F" "生成空白UEFI vars.fd [与磁盘/ISO同名]")
         if [[ "$TARGET_ARCH" == "x86_64" ]]; then
             MENU_ITEMS+=(
-                "5" "自定义x86 OVMF_CODE.fd [图形界面]"
-                "6" "自定义x86 OVMF_VARS.fd [图形界面]"
+                "5" "自定义x86 OVMF_CODE.fd "
+                "6" "自定义x86 OVMF_VARS.fd "
             )
         fi
         MENU_ITEMS+=(
@@ -777,29 +999,36 @@ main_menu(){
             "8" "设置分配RAM"
             "9" "CPU核心数"
             "0" "虚拟显卡"
+            "AU" "声卡设置"
             "N" "网络"
             "V" "VNC连接"
+            "SNAP" "快照管理"
+            "ARG" "[高级]额外QEMU参数"
+            "UPD" "手动检查版本更新"
             "S" "保存当前配置"
             "L" "读取已有配置"
-            "C" "校验虚拟磁盘文件 [*.qcow2]"
+            "C" "检查磁盘文件 [*.qcow2]"
             "R" "查看Qemu日志"
-            "RUN" "按当前配置启动虚拟机"
+            "RUN" "按当前配置启动Qemu"
+            "ABOUT" "关于工具"
             "EXIT" "退出工具"
         )
         local OPT
-        OPT=$(dialog --backtitle "$BACKTITLE" --title "主菜单" \
-        --menu "当前配置
-    架构(Arch):$TARGET_ARCH 主板(Type):$MACHINE CPU:$CPU 核心(Cores):$SMP 内存(RAM):${MEM}M 显卡(Graphics):$GPU
-    磁盘(Disk):${DISK_PREVIEW:-无} iso(CDROM):${ISO_PREVIEW:-无}
-    ARM64 VARS:${A_VARS_PREVIEW:-无}
-    x86 OVMF CODE:${X_CODE_PREVIEW:-系统内置} OVMF VARS:${X_VARS_PREVIEW:-系统内置}
-    VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY 网络:$NET_MODE SSH端口:$SSH_FORWARD_PORT" 36 104 22 \
-        "${MENU_ITEMS[@]}" 2>&1 >/dev/tty) || true
+        printf '\n%.0s' {1..6}
+                OPT=$(dialog --backtitle "$BACKTITLE" --title "Qemu manager" \
+--menu "当前配置
+架构(Arch):$TARGET_ARCH 主板(Type):$MACHINE CPU:$CPU 核心(Cores):$SMP 内存(RAM):${MEM}M 显卡(Graphics):$GPU 声卡:$SOUND_DEV
+磁盘(Disk):${DISK_PREVIEW:-无} iso(CDROM):${ISO_PREVIEW:-无}
+ARM64 VARS:${A_VARS_PREVIEW:-无}
+x86 OVMF CODE:${X_CODE_PREVIEW:-系统内置} OVMF VARS:${X_VARS_PREVIEW:-系统内置}
+VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY 网络:$NET_MODE SSH端口:$SSH_FORWARD_PORT" 27 108 20 \
+"${MENU_ITEMS[@]}" 2>&1 >/dev/tty) || true
         case "$OPT" in
         1) choose_arch ;;
         1a) choose_x86_machine ;;
         2) HDA=$(select_qcow2_disk) ;;
         D) create_qcow2_disk ;;
+        E) extra_disk_menu ;;
         3) CDROM=$(select_iso_file) ;;
         4) [[ "$TARGET_ARCH" == "aarch64" ]] && UEFI_VARS=$(dialog --backtitle "$BACKTITLE" --title "选择ARM64 UEFI vars.fd" --fselect "$STORAGE_ROOT" 17 66 2>&1 >/dev/tty) ;;
         F) create_empty_vars_fd "$TARGET_ARCH" ;;
@@ -809,16 +1038,27 @@ main_menu(){
         8) choose_memory ;;
         9) choose_smp ;;
         0) choose_gpu ;;
+        AU) choose_sound ;;
         N) network_setting_menu ;;
         V) vnc_setting_menu ;;
+        SNAP) snapshot_menu ;;
+        ARG) custom_args_menu ;;
+        UPD)
+            clear
+            check_update
+            read -n1 -p "按任意键返回菜单"
+        ;;
         S) save_config ;;
         L) load_config ;;
         C) check_qcow2 ;;
         R) view_log ;;
         RUN) start_vm ;;
+        ABOUT) termux-open https://github.com/Liuhao20081209/termux‑qemu‑tool ;;
         EXIT) clear;exit $EXIT_OK ;;
+       
         esac
     done
 }
+
 env_check_text
 main_menu
