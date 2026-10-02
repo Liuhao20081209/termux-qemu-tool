@@ -7,7 +7,7 @@ EXIT_FILE_CORRUPT=4
 EXIT_QEMU_FAIL=5
 EXIT_INVALID_PARAM=6
 
-LOCAL_VERSION="20261002"
+LOCAL_VERSION="20261003"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
 REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
@@ -89,7 +89,7 @@ check_update() {
                 return 6
             fi
 
-            echo -e "\033[34m正在校验文件SHA‑256哈希\033[0m"
+            echo -e "\033[34m正在校验文件SHA-256哈希\033[0m"
             REMOTE_HASH=$(awk '{print $1}' "$TMP_SHA")
             LOCAL_TMP_HASH=$(sha256sum "$TMP_FILE" | awk '{print $1}')
             if [[ "$REMOTE_HASH" != "$LOCAL_TMP_HASH" ]]; then
@@ -97,7 +97,7 @@ check_update() {
                 echo -e "\033[31mSHA256哈希校验失败 文件可能被篡改或者损坏，拒绝更新\033[0m"
                 return 7
             fi
-            echo -e "\033[32mSHA‑256校验通过\033[0m"
+            echo -e "\033[32mSHA-256校验通过\033[0m"
 
             mv "$TMP_FILE" "$SCRIPT_PATH"
             chmod +x "$SCRIPT_PATH"
@@ -514,7 +514,7 @@ choose_memory(){
 choose_smp(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "CPU核心数" --radiolist \
-"核心过多会导致性能下降，1‑2核最稳" 14 56 4 \
+"核心过多会导致性能下降，1-2核最稳" 14 56 4 \
 "1" "1 核" OFF \
 "2" "2 核（推荐）" ON \
 "3" "3 核" OFF \
@@ -528,14 +528,14 @@ choose_gpu(){
     local SEL
     if [[ "$TARGET_ARCH" == "x86_64" && "$MACHINE" == "pc" ]];then
         SEL=$(dialog --backtitle "$BACKTITLE" --title "显卡" --radiolist \
-"pc主板仅cirrus‑vga兼容，其他显卡可能导致黑屏" 14 56 1 \
-"cirrus‑vga" "cirrus‑vga 兼容模式(强制)" ON \
+"pc主板仅cirrus-vga兼容，其他显卡可能导致黑屏" 14 56 1 \
+"cirrus-vga" "cirrus-vga 兼容模式(强制)" ON \
 2>&1 >/dev/tty) || true
     else
         SEL=$(dialog --backtitle "$BACKTITLE" --title "虚拟显卡(Graphics)" --radiolist \
-"ramfb [兼容]，virtio‑gpu [性能]" 14 56 2 \
+"ramfb [兼容]，virtio-gpu [性能]" 14 56 2 \
 "ramfb" "ramfb [兼容]" ON \
-"virtio‑gpu‑pci" "virtio‑gpu‑pci [性能]" OFF \
+"virtio-gpu-pci" "virtio-gpu-pci [性能]" OFF \
 2>&1 >/dev/tty) || true
     fi
     [ -z "$SEL" ] && return
@@ -560,7 +560,7 @@ select_x86_ovmf_code(){
     if [[ -n "$path" ]]; then
         X86_OVMF_CODE="$path"
         MACHINE="q35"
-        GPU="virtio‑vga"
+        GPU="virtio-vga"
         msgbox "已使用自定义OVMF_CODE，自动切换q35主板"
     fi
 }
@@ -598,7 +598,7 @@ while true; do
             VNC_DISPLAY="$TMP"
             msgbox "显示编号更新为:$VNC_DISPLAY"
         else
-            msgbox "仅允许0‑9数字"
+            msgbox "仅允许0-9数字"
         fi
     ;;
     3)
@@ -851,9 +851,9 @@ build_cmd(){
         -smp "$SMP"
         -m "$MEM"
         -device "$GPU"
-        -device qemu‑xhci
-        -device usb‑kbd
-        -device usb‑tablet
+        -device qemu-xhci
+        -device usb-kbd
+        -device usb-tablet
         -serial mon:stdio
     )
     if [[ "$SOUND_DEV" != "none" ]];then
@@ -868,9 +868,9 @@ build_cmd(){
     local FWD_STR="hostfwd=tcp::${SSH_FORWARD_PORT}-:22"
     if [[ "$NET_MODE" == "user" ]]; then
         CMD+=(-netdev "user,id=net0,$FWD_STR,$DNS_STR")
-        CMD+=(-device virtio‑net‑pci,netdev=net0)
+        CMD+=(-device virtio-net-pci,netdev=net0)
     else
-        CMD+=(-netdev "tap,id=net0" -device virtio‑net‑pci,netdev=net0)
+        CMD+=(-netdev "tap,id=net0" -device virtio-net-pci,netdev=net0)
     fi
     local VNC_FULL="${VNC_LISTEN_ADDR}:${VNC_DISPLAY}"
     if [[ -n "$VNC_PASSWD" ]]; then
@@ -916,7 +916,7 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
     echo " 串口日志：此窗口 | 日志文件位置：$VM_LOG"
     echo " 终止虚拟机：Ctrl+C"
     echo "=========================================================="
-    echo "时间：$(date '+%Y‑%m‑%d %H:%M:%S')" >> "$VM_LOG"
+    echo "时间：$(date '+%Y-%m-%d %H:%M:%S')" >> "$VM_LOG"
     echo "命令：${CMD[*]}" >> "$VM_LOG"
     echo "==========================================================" >> "$VM_LOG"
     "${CMD[@]}" 2>&1 | tee "$VM_LOG"
