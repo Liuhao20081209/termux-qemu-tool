@@ -11,7 +11,7 @@ LOCAL_VERSION="20261002"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
 REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
-# =============================================================
+
 STORAGE_ROOT="/storage/emulated/0"
 CONF_DIR="$HOME/vm_profiles"
 GLOBAL_LOG="$HOME/qemu-run.log"
@@ -42,10 +42,9 @@ SSH_FORWARD_PORT="2222"
 CUSTOM_ARGS=""
 EXTRA_DISKS=()
 
-
 check_update() {
     echo ""
-    echo -e "\033[34m正在检测版本更新...\033[0m"
+    echo -e "\033[34m正在检测版本更新\033[0m"
     local REMOTE_VERSION
     REMOTE_VERSION=$(curl -fsSL --max-time 8 "$REMOTE_VERSION_URL" 2>/dev/null)
 
@@ -60,8 +59,8 @@ check_update() {
     fi
 
     if [[ "$REMOTE_VERSION" -gt "$LOCAL_VERSION" ]];then
-        echo -e "\033[32m 发现新版本！本地:$LOCAL_VERSION 远程:$REMOTE_VERSION\033[0m"
-        read -p "是否下载更新脚本？更新前会备份旧文件 [y/N] " opt
+        echo -e "\033[32m发现新版本 本地:$LOCAL_VERSION 远程:$REMOTE_VERSION\033[0m"
+        read -p "是否下载更新脚本 更新前会备份旧文件 [y/N] " opt
         if [[ "$opt" == "y" || "$opt" == "Y" ]];then
             local SCRIPT_PATH="$0"
             local TMP_FILE="./vmqemu.tmp"
@@ -70,51 +69,53 @@ check_update() {
 
             rm -f "$TMP_FILE" "$TMP_SHA"
             cp "$SCRIPT_PATH" "$BACKUP_FILE"
-            echo -e "\033[36m已备份旧脚本至：$BACKUP_FILE\033[0m"
+            echo -e "\033[34m已备份旧脚本至：$BACKUP_FILE\033[0m"
 
             if ! curl -fsSL --max-time 10 "$REMOTE_SHA256_URL" -o "$TMP_SHA" 2>/dev/null;then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31m 无法获取SHA256校验文件，终止更新\033[0m"
+                echo -e "\033[31m无法获取SHA256校验文件，终止更新\033[0m"
                 return 5
             fi
 
             if ! curl -fsSL --max-time 12 "$REMOTE_SCRIPT_URL" -o "$TMP_FILE" 2>/dev/null;then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31m 下载新版本脚本失败，网络问题，本次不更新\033[0m"
+                echo -e "\033[31m下载新版本脚本失败，网络问题，本次不更新\033[0m"
                 return 4
             fi
 
             if [[ ! -s "$TMP_FILE" ]];then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31m 下载得到空文件，更新终止\033[0m"
+                echo -e "\033[31m下载得到空文件，更新终止\033[0m"
                 return 6
             fi
 
-            echo -e "\033[34m正在校验文件SHA‑256哈希...\033[0m"
-            if ! sha256sum --status -c "$TMP_SHA" 2>/dev/null; then
+            echo -e "\033[34m正在校验文件SHA‑256哈希\033[0m"
+            REMOTE_HASH=$(awk '{print $1}' "$TMP_SHA")
+            LOCAL_TMP_HASH=$(sha256sum "$TMP_FILE" | awk '{print $1}')
+            if [[ "$REMOTE_HASH" != "$LOCAL_TMP_HASH" ]]; then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31m SHA-256哈希校验失败！文件可能被篡改或者损坏\033[0m"
+                echo -e "\033[31mSHA256哈希校验失败 文件可能被篡改或者损坏，拒绝更新\033[0m"
                 return 7
             fi
-            echo -e "\033[32m SHA‑256校验通过\033[0m"
+            echo -e "\033[32mSHA‑256校验通过\033[0m"
 
             mv "$TMP_FILE" "$SCRIPT_PATH"
             chmod +x "$SCRIPT_PATH"
             rm -f "$TMP_SHA"
-            echo -e "\033[32m 更新文件写入完成\033[0m"
+            echo -e "\033[32m更新文件写入完成\033[0m"
 
-            read -p "是否立刻重启脚本加载新版本？(内存配置将会丢失) [y/N] " reboot_opt
+            read -p "是否立刻重启脚本加载新版本 内存配置将会丢失 [y/N] " reboot_opt
             if [[ "$reboot_opt" == "y" || "$reboot_opt" == "Y" ]];then
-                echo -e "\033[36m正在重新启动脚本...\033[0m"
+                echo -e "\033[34m正在重新启动脚本\033[0m"
                 exec "$SCRIPT_PATH"
             else
-                echo -e "\033[36m 将继续运行旧版本，请手动退出重新运行生效\033[0m"
+                echo -e "\033[33m将继续运行旧版本，请手动退出重新运行生效\033[0m"
             fi
         else
-            echo -e "\033[36m 跳过更新，可以稍后在UPD菜单手动更新\033[0m"
+            echo -e "\033[33m跳过更新，可以稍后在UPD菜单手动更新\033[0m"
         fi
     else
-        echo -e "\033[32m 当前已是最新版本 ($LOCAL_VERSION)\033[0m"
+        echo -e "\033[32m当前已是最新版本 ($LOCAL_VERSION)\033[0m"
     fi
     sleep 1.2
     return 0
@@ -193,7 +194,7 @@ env_check_text() {
     local required_pkgs=("dialog" "qemu-system-aarch64-headless" "qemu-system-x86_64-headless" "qemu-utils")
     local missing=()
     local broken=()
-    echo -e "${BLUE}Step 1: Detecting executables...${RESET}"
+    echo -e "${BLUE}Step 1: Detecting executables${RESET}"
     for bin in "${required_bin[@]}"; do
         echo -n "  $bin ............................ "
         if ! command -v "$bin" &>/dev/null; then
@@ -205,7 +206,7 @@ env_check_text() {
         sleep 0.15
     done
     echo ""
-    echo -e "${BLUE}Step 2: Testing QEMU functionality...${RESET}"
+    echo -e "${BLUE}Step 2: Testing QEMU functionality${RESET}"
     for bin in qemu-system-aarch64 qemu-system-x86_64; do
         if command -v "$bin" &>/dev/null; then
             echo -n "  Testing $bin --version ............. "
@@ -219,7 +220,7 @@ env_check_text() {
         sleep 0.15
     done
     echo ""
-    echo -e "${BLUE}Step 3: Checking firmware files...${RESET}"
+    echo -e "${BLUE}Step 3: Checking firmware files${RESET}"
     echo -n "  ARM64 UEFI (edk2-aarch64-code.fd) ... "
     if [[ -f "$PREFIX/share/qemu/edk2-aarch64-code.fd" ]]; then
         echo -e "[${GREEN}OK${RESET}]"
@@ -237,13 +238,13 @@ env_check_text() {
     echo ""
     echo -e "${CYAN}======================================================${RESET}"
     if [[ ${#missing[@]} -eq 0 && ${#broken[@]} -eq 0 ]]; then
-        echo -e "${GREEN}POST COMPLETE: All components ready.${RESET}"
+        echo -e "${GREEN}POST COMPLETE: All components ready${RESET}"
         check_update
-        echo -e "${GREEN}Launching graphical interface...${RESET}"
+        echo -e "${GREEN}Launching graphical interface${RESET}"
         sleep 0.8
         return 0
     fi
-    echo -e "${YELLOW} Issues detected:${RESET}"
+    echo -e "${YELLOW} Issues detected${RESET}"
     if [[ ${#missing[@]} -gt 0 ]]; then
         echo -e "  ${RED}Missing: ${missing[*]}${RESET}"
     fi
@@ -257,14 +258,14 @@ env_check_text() {
         exit $EXIT_MISS_DEPEND
     fi
     echo ""
-    echo -e "${BLUE}Updating software repository index...${RESET}"
+    echo -e "${BLUE}Updating software repository index${RESET}"
     pkg update >/dev/null 2>&1
     if [[ ${#missing[@]} -gt 0 || ${#broken[@]} -gt 0 ]]; then
-        echo -e "${BLUE}Reinstalling QEMU packages to fix issues...${RESET}"
+        echo -e "${BLUE}Reinstalling QEMU packages to fix issues${RESET}"
         pkg install "${required_pkgs[@]}" -y
     fi
     echo ""
-    echo -e "${BLUE}Step 4: Verify repair results...${RESET}"
+    echo -e "${BLUE}Step 4: Verify repair results${RESET}"
     local still_broken=()
     for bin in "${required_bin[@]}"; do
         echo -n "  $bin ............................ "
@@ -293,15 +294,15 @@ env_check_text() {
     if [[ ${#still_broken[@]} -gt 0 ]]; then
         echo ""
         echo -e "${RED}[ERROR]: 仍然存在问题: ${still_broken[*]}${RESET}"
-        echo -e "${YELLOW}请手动检查并修复:${RESET}"
+        echo -e "${YELLOW}请手动检查并修复${RESET}"
         echo -e "${BOLD}pkg update && pkg install ${required_pkgs[*]} -y${RESET}"
         echo -e "${YELLOW}或重新安装Termux的QEMU包${RESET}"
         exit $EXIT_MISS_DEPEND
     fi
     echo ""
-    echo -e "${GREEN}All issues resolved.${RESET}"
+    echo -e "${GREEN}All issues resolved${RESET}"
     check_update
-    echo -e "${GREEN}Starting manager...${RESET}"
+    echo -e "${GREEN}Starting manager${RESET}"
     sleep 1
 }
 
@@ -332,7 +333,7 @@ else
 fi
 if [ -f "$DISK_PATH" ];then
     dialog --backtitle "$BACKTITLE" --title "文件冲突" --yesno \
-"目标文件已存在，覆盖会清空所有数据，确定继续？
+"目标文件已存在，覆盖会清空所有数据，确定继续
 $DISK_PATH" 14 66 || true
     [ $? -ne 0 ] && return
 fi
@@ -362,7 +363,7 @@ fi
 FD_PATH="${FD_DIR}/${FD_BN}.fd"
 if [ -f "$FD_PATH" ];then
     dialog --backtitle "$BACKTITLE" --title "文件冲突" --yesno \
-"目标文件已存在，覆盖会清除全部UEFI配置，确认继续？
+"目标文件已存在，覆盖会清除全部UEFI配置，确认继续
 $FD_PATH" 14 66 || true
     [ $? -ne 0 ] && return
 fi
@@ -381,7 +382,7 @@ fi
 check_qemu_running(){
 if pgrep -f qemu-system >/dev/null 2>&1;then
     dialog --backtitle "$BACKTITLE" --title "提示" --yesno \
-"检测到后台QEMU进程，继续启动易磁盘锁，强制杀掉全部QEMU进程？" 14 66 || true
+"检测到后台QEMU进程，继续启动易磁盘锁，强制杀掉全部QEMU进程" 14 66 || true
     if [ $? -eq 0 ];then
         pkill -f qemu-system
         sleep 1
@@ -489,7 +490,7 @@ choose_cpu(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "CPU型号" --radiolist \
 "max自动适配最优，cortex-a76仅ARM可用" 14 62 3 \
-"max" "max 自动适配 [首选]" ON \
+"max" "max 自动适配（首选）" ON \
 "cortex-a76" "cortex-a76 ARM专用" OFF \
 "qemu64" "qemu64 x86专用" OFF \
 2>&1 >/dev/tty) || true
@@ -680,11 +681,11 @@ while true;do
         fp=$(select_qcow2_disk)
         [[ -n "$fp" && -f "$fp" ]] && EXTRA_DISKS+=("$fp")
     elif [[ "$SEL" == "CLEAR" ]];then
-        if dialog --backtitle "$BACKTITLE" --title "确认" --yesno "确认清空全部附加磁盘？" 10 58;then
+        if dialog --backtitle "$BACKTITLE" --title "确认" --yesno "确认清空全部附加磁盘" 10 58;then
             EXTRA_DISKS=()
         fi
     elif [[ "$SEL" =~ ^[0-9]+$ ]];then
-        if dialog --backtitle "$BACKTITLE" --title "确认删除" --yesno "移除 ${EXTRA_DISKS[$SEL]} ?" 10 60;then
+        if dialog --backtitle "$BACKTITLE" --title "确认删除" --yesno "移除 ${EXTRA_DISKS[$SEL]}" 10 60;then
             unset EXTRA_DISKS[$SEL]
             EXTRA_DISKS=("${EXTRA_DISKS[@]}")
         fi
@@ -731,7 +732,7 @@ snapshot_menu(){
         ;;
         LIST)
             OUT=$(qemu-img snapshot -l "$HDA")
-            msgbox "快照列表:
+            msgbox "快照列表
 $OUT"
         ;;
         esac
@@ -890,7 +891,7 @@ start_vm(){
         return
     fi
     if [[ "$TARGET_ARCH" == "aarch64" && -z "$UEFI_VARS" ]];then
-        dialog --backtitle "$BACKTITLE" --title "提示" --yesno "ARM64未设置vars.fd，BIOS设置无法保存，是否继续？" 14 64 || true
+        dialog --backtitle "$BACKTITLE" --title "提示" --yesno "ARM64未设置vars.fd，BIOS设置无法保存，是否继续" 14 64 || true
         [ $? -ne 0 ] && return
     fi
     build_cmd
@@ -905,7 +906,7 @@ start_vm(){
 VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
 日志(Log)：$VM_LOG
 串口控制台(tty)：当前Termux终端窗口
-确认启动？" 22 76 || true
+确认启动" 22 76 || true
     [ $? -ne 0 ] && return
     > "$VM_LOG"
     clear
@@ -967,7 +968,7 @@ main_menu(){
 文件迁移后虚拟机读写速度更快
 \Z1\Zb[重要风险提醒]\Zn
 卸载Termux会直接清空私有目录[/data/data/com.termux]内全部内容，
-虚拟磁盘、配置文件将会永久丢失！
+虚拟磁盘、配置文件将会永久丢失
 重要资料务必提前备份到内部存储[/storage/emulated/0/]
 [按回车键继续]" 24 76 || true
         fi
@@ -1053,12 +1054,11 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY 网络:$NET_MODE SSH端口:$SSH_FORWARD_PORT" 
         C) check_qcow2 ;;
         R) view_log ;;
         RUN) start_vm ;;
-        ABOUT) termux-open https://github.com/Liuhao20081209/termux‑qemu‑tool ;;
+        ABOUT) termux-open https://github.com/Liuhao20081209/termux-qemu-tool ;;
         EXIT) clear;exit $EXIT_OK ;;
        
         esac
     done
 }
-
 env_check_text
 main_menu
