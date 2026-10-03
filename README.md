@@ -37,4 +37,4 @@
 ### 1. 全部依赖包安装指令
 脚本启动自检时如果检测到缺失工具，会弹窗提示执行下面这条完整安装命令：
 ```bash
-pkg update && pkg install dialog qemu-system-aarch64-headless qemu-system-x86_64-headless qemu-utils -y
+pkg update && pkg install dialog qemu-system-aarch64-headless qemu-system-x86_64-headless qemu-utils qemu-img -y
