@@ -49,12 +49,12 @@ check_update() {
     REMOTE_VERSION=$(curl -fsSL --max-time 8 "$REMOTE_VERSION_URL" 2>/dev/null)
 
     if [[ -z "$REMOTE_VERSION" ]]; then
-        echo -e "\033[33m⚠ 无法连接更新服务器，跳过版本检查\033[0m"
+        echo -e "\033[33m 无法连接Github服务器，跳过版本检查\033[0m"
         return 2
     fi
 
-    if [[ ! "$REMOTE_VERSION" =~ ^[0-9]{8}$ ]]; then
-        echo -e "\033[33m⚠ 远程版本文件格式异常，跳过版本检查\033[0m"
+    if [[ ! "$REMOTE_VERSION" =~ ^[0-9]{12}$ ]]; then
+        echo -e "\033[33m 远程版本文件格式异常，跳过版本检查\033[0m"
         return 3
     fi
 
@@ -112,7 +112,7 @@ check_update() {
                 echo -e "\033[33m将继续运行旧版本，请手动退出重新运行生效\033[0m"
             fi
         else
-            echo -e "\033[33m跳过更新，可以稍后在UPD菜单手动更新\033[0m"
+            echo -e "\033[33m跳过更新，可以稍后在主菜单手动更新\033[0m"
         fi
     else
         echo -e "\033[32m当前已是最新版本 ($LOCAL_VERSION)\033[0m"
