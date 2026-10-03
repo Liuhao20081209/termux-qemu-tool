@@ -1,1 +1,1 @@
-7227ebe54592d76d557ee7f6d4c081ab302ee36334d5d2d2a1427051c15e11de termux-qemu-tool.sh
+863b44d8c763ec1ba43f66dcf19774d6ec14b824bc245e1e106ded4c9d5f9d06 termux-qemu-tool.sh
