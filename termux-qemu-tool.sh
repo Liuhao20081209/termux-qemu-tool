@@ -380,15 +380,29 @@ fi
 }
 
 check_qemu_running(){
-if pgrep -f qemu-system >/dev/null 2>&1;then
-    dialog --backtitle "$BACKTITLE" --title "提示" --yesno \
-"检测到后台QEMU进程，继续启动易磁盘锁，强制杀掉全部QEMU进程" 14 66 || true
-    if [ $? -eq 0 ];then
-        pkill -f qemu-system
-        sleep 1
-        msgbox "已清理全部QEMU后台进程"
+    [[ -z "$HDA" ]] && return 0
+    local conflict=""
+    for pid in $(pgrep -f qemu-system 2>/dev/null); do
+        if tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | grep -qF "$HDA"; then
+            conflict="$pid"
+            break
+        fi
+    done
+    if [[ -n "$conflict" ]]; then
+        dialog --backtitle "$BACKTITLE" --title "磁盘冲突" --yesno \
+"磁盘已被另一个QEMU进程占用
+PID: $conflict
+磁盘: $HDA
+是否强制杀掉该进程后继续？" 14 76 || true
+        if [ $? -eq 0 ]; then
+            kill -9 "$conflict" 2>/dev/null
+            sleep 1
+            msgbox "已终止冲突进程"
+        else
+            return 1
+        fi
     fi
-fi
+    return 0
 }
 
 check_uefi_firmware(){
@@ -886,7 +900,7 @@ build_cmd(){
 }
 
 start_vm(){
-    check_qemu_running
+    check_qemu_running || return
     if [[ -z "$HDA" ]];then
         msgbox "先选择或新建qcow2虚拟磁盘"
         return
