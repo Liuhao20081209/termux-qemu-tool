@@ -7,7 +7,7 @@ EXIT_FILE_CORRUPT=4
 EXIT_QEMU_FAIL=5
 EXIT_INVALID_PARAM=6
 
-LOCAL_VERSION="20261003"
+LOCAL_VERSION="202610031035"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
 REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
@@ -16,7 +16,7 @@ STORAGE_ROOT="/storage/emulated/0"
 CONF_DIR="$HOME/vm_profiles"
 GLOBAL_LOG="$HOME/qemu-run.log"
 mkdir -p "$CONF_DIR"
-BACKTITLE="QEMU VM Manager for Termux v1.1"
+BACKTITLE="QEMU VM Manager for Termux v1.2"
 UEFI_CODE="$PREFIX/share/qemu/edk2-aarch64-code.fd"
 SYS_X86_OVMF_CODE="$PREFIX/share/qemu/edk2-x86_64-code.fd"
 SYS_X86_OVMF_VARS="$PREFIX/share/qemu/edk2-x86_64-vars.fd"
@@ -854,7 +854,8 @@ build_cmd(){
         -device qemu-xhci
         -device usb-kbd
         -device usb-tablet
-        -serial mon:stdio
+        -k en-us
+        -serial stdio
     )
     if [[ "$SOUND_DEV" != "none" ]];then
         CMD+=(-audiodev "none,id=snd0" -device "${SOUND_DEV},audiodev=snd0")
