@@ -7,7 +7,7 @@ EXIT_FILE_CORRUPT=4
 EXIT_QEMU_FAIL=5
 EXIT_INVALID_PARAM=6
 
-LOCAL_VERSION="202610031110"
+LOCAL_VERSION="202610031435"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
 REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
