@@ -38,3 +38,6 @@
 脚本启动自检时如果检测到缺失工具，会弹窗提示执行下面这条完整安装命令：
 ```bash
 pkg update && pkg install dialog qemu-system-aarch64-headless qemu-system-x86_64-headless qemu-utils qemu-img -y
+
+## 三、注意事项：
+不要在串口控制台使用Ctrl+C，否则会导致Qemu进程被终止，使用SSH连接后控制，默认：ssh root@127.0.0.1 -p 2222
