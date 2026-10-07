@@ -7,7 +7,7 @@ EXIT_FILE_CORRUPT=4
 EXIT_QEMU_FAIL=5
 EXIT_INVALID_PARAM=6
 
-LOCAL_VERSION="202610031435"
+LOCAL_VERSION="202610071230"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
 REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
@@ -930,6 +930,8 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
     echo " VNC地址：$VNC_LISTEN_ADDR:$VNC_DISPLAY "
     echo " 串口日志：此窗口 | 日志文件位置：$VM_LOG"
     echo " 终止虚拟机：Ctrl+C"
+    echo "不要在串口控制台使用Ctrl+C，否则会导致Qemu进程被终止"
+    echo "推荐使用SSH连接后控制，默认：ssh root@127.0.0.1 -p 2222"
     echo "=========================================================="
     echo "时间：$(date '+%Y-%m-%d %H:%M:%S')" >> "$VM_LOG"
     echo "命令：${CMD[*]}" >> "$VM_LOG"
