@@ -1,3 +1,4 @@
+
 #!/data/data/com.termux/files/usr/bin/bash
 EXIT_OK=0
 EXIT_USER_CANCEL=1
@@ -6,17 +7,16 @@ EXIT_FILE_MISS=3
 EXIT_FILE_CORRUPT=4
 EXIT_QEMU_FAIL=5
 EXIT_INVALID_PARAM=6
-
-LOCAL_VERSION="202610071230"
+LOCAL_VERSION="202610181300"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/version"
 REMOTE_SHA256_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/sha256sum.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/Liuhao20081209/termux-qemu-tool/main/termux-qemu-tool.sh"
-
 STORAGE_ROOT="/storage/emulated/0"
-CONF_DIR="$HOME/vm_profiles"
+
+CONF_DIR="$HOME/config"
 GLOBAL_LOG="$HOME/qemu-run.log"
 mkdir -p "$CONF_DIR"
-BACKTITLE="QEMU VM Manager for Termux v1.3"
+BACKTITLE="QEMU VM Manager for Termux v1.4"
 UEFI_CODE="$PREFIX/share/qemu/edk2-aarch64-code.fd"
 SYS_X86_OVMF_CODE="$PREFIX/share/qemu/edk2-x86_64-code.fd"
 SYS_X86_OVMF_VARS="$PREFIX/share/qemu/edk2-x86_64-vars.fd"
@@ -47,17 +47,14 @@ check_update() {
     echo -e "\033[34m正在检测版本更新\033[0m"
     local REMOTE_VERSION
     REMOTE_VERSION=$(curl -fsSL --max-time 8 "$REMOTE_VERSION_URL" 2>/dev/null)
-
     if [[ -z "$REMOTE_VERSION" ]]; then
-        echo -e "\033[33m 无法连接Github服务器，跳过版本检查\033[0m"
+        echo -e "\033[33m无法连接Github服务器，跳过版本检查\033[0m"
         return 2
     fi
-
     if [[ ! "$REMOTE_VERSION" =~ ^[0-9]{12}$ ]]; then
-        echo -e "\033[33m 远程版本文件格式异常，跳过版本检查\033[0m"
+        echo -e "\033[33m远程版本文件格式异常，跳过版本检查\033[0m"
         return 3
     fi
-
     if [[ "$REMOTE_VERSION" -gt "$LOCAL_VERSION" ]];then
         echo -e "\033[32m发现新版本 本地:$LOCAL_VERSION 远程:$REMOTE_VERSION\033[0m"
         read -p "是否下载更新脚本 更新前会备份旧文件 [y/N] " opt
@@ -66,45 +63,38 @@ check_update() {
             local TMP_FILE="./vmqemu.tmp"
             local TMP_SHA="./vmqemu_sha.tmp"
             local BACKUP_FILE="${SCRIPT_PATH}.bak.${LOCAL_VERSION}"
-
             rm -f "$TMP_FILE" "$TMP_SHA"
             cp "$SCRIPT_PATH" "$BACKUP_FILE"
             echo -e "\033[34m已备份旧脚本至：$BACKUP_FILE\033[0m"
-
             if ! curl -fsSL --max-time 10 "$REMOTE_SHA256_URL" -o "$TMP_SHA" 2>/dev/null;then
                 rm -f "$TMP_FILE" "$TMP_SHA"
                 echo -e "\033[31m无法获取SHA256校验文件，终止更新\033[0m"
                 return 5
             fi
-
             if ! curl -fsSL --max-time 12 "$REMOTE_SCRIPT_URL" -o "$TMP_FILE" 2>/dev/null;then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31m下载新版本脚本失败，网络问题，本次不更新\033[0m"
+                echo -e "\033[31m下载新版本脚本失败，更新失败\033[0m"
                 return 4
             fi
-
             if [[ ! -s "$TMP_FILE" ]];then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31m下载得到空文件，更新终止\033[0m"
+                echo -e "\033[31m下载得到空文件，更新失败\033[0m"
                 return 6
             fi
-
             echo -e "\033[34m正在校验文件SHA-256哈希\033[0m"
             REMOTE_HASH=$(awk '{print $1}' "$TMP_SHA")
             LOCAL_TMP_HASH=$(sha256sum "$TMP_FILE" | awk '{print $1}')
             if [[ "$REMOTE_HASH" != "$LOCAL_TMP_HASH" ]]; then
                 rm -f "$TMP_FILE" "$TMP_SHA"
-                echo -e "\033[31mSHA256哈希校验失败 文件可能被篡改或者损坏，拒绝更新\033[0m"
+                echo -e "\033[31mSHA256哈希校验失败 文件可能被篡改或者损坏，更新失败\033[0m"
                 return 7
             fi
             echo -e "\033[32mSHA-256校验通过\033[0m"
-
             mv "$TMP_FILE" "$SCRIPT_PATH"
             chmod +x "$SCRIPT_PATH"
             rm -f "$TMP_SHA"
             echo -e "\033[32m更新文件写入完成\033[0m"
-
-            read -p "是否立刻重启脚本加载新版本 内存配置将会丢失 [y/N] " reboot_opt
+            read -p "是否立刻重启脚本加载新版本？内存配置将会丢失 [y/N] " reboot_opt
             if [[ "$reboot_opt" == "y" || "$reboot_opt" == "Y" ]];then
                 echo -e "\033[34m正在重新启动脚本\033[0m"
                 exec "$SCRIPT_PATH"
@@ -120,28 +110,22 @@ check_update() {
     sleep 1.2
     return 0
 }
-
 error_handler() {
     local ret=$?
     local line=$1
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] CRASH！行号:$line 返回码:$ret" >> "$GLOBAL_LOG"
-    dialog --backtitle "$BACKTITLE" --title "运行异常" --msgbox "程序发生错误
-错误代码: $ret
-出错行号: $line
-日志查看：$GLOBAL_LOG" 14 64
+
     exit $ret
 }
-trap 'error_handler $LINENO' ERR
 
 msgbox(){
     dialog --backtitle "$BACKTITLE" --title "提示" --msgbox "$1" 9 58 || true
 }
-
 select_qcow2_disk(){
     local start_path="$STORAGE_ROOT"
     while true; do
         local sel
-        sel=$(dialog --backtitle "$BACKTITLE" --title "选择虚拟磁盘(任意镜像文件)" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
+        sel=$(dialog --backtitle "$BACKTITLE" --title "选择虚拟磁盘文件" --fselect "$start_path" 17 66 2>&1 >/dev/tty)
         [ -z "$sel" ] && echo "" && return
         if [ -d "$sel" ]; then
             start_path="$sel"
@@ -151,7 +135,6 @@ select_qcow2_disk(){
         return
     done
 }
-
 select_iso_file(){
     local start_path="$STORAGE_ROOT"
     while true; do
@@ -166,7 +149,6 @@ select_iso_file(){
         return
     done
 }
-
 get_vm_log_path(){
     if [[ -n "$HDA" && -f "$HDA" ]]; then
         local disk_dir=$(dirname "$HDA")
@@ -176,7 +158,6 @@ get_vm_log_path(){
         echo "$GLOBAL_LOG"
     fi
 }
-
 env_check_text() {
     RED='\033[0;31m'
     GREEN='\033[0;32m'
@@ -240,7 +221,7 @@ env_check_text() {
     if [[ ${#missing[@]} -eq 0 && ${#broken[@]} -eq 0 ]]; then
         echo -e "${GREEN}POST COMPLETE: All components ready${RESET}"
         check_update
-        echo -e "${GREEN}Launching graphical interface${RESET}"
+        echo -e "${GREEN}正在启动图形界面${RESET}"
         sleep 0.8
         return 0
     fi
@@ -305,7 +286,6 @@ env_check_text() {
     echo -e "${GREEN}Starting manager${RESET}"
     sleep 1
 }
-
 create_qcow2_disk(){
 local CAP_SEL
 CAP_SEL=$(dialog --backtitle "$BACKTITLE" --title "新建虚拟磁盘" --radiolist \
@@ -343,7 +323,6 @@ msgbox "虚拟磁盘创建完成且已选中
 路径：$DISK_PATH
 最大容量上限：$CAP_SEL"
 }
-
 create_empty_vars_fd(){
 local ARCH_TAG="$1"
 local FD_DIR FD_BN FD_PATH
@@ -378,12 +357,12 @@ elif [[ "$ARCH_TAG" == "x86_64" ]]; then
 路径：$FD_PATH"
 fi
 }
-
 check_qemu_running(){
     [[ -z "$HDA" ]] && return 0
     local conflict=""
-    for pid in $(pgrep -f qemu-system 2>/dev/null); do
-        if tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | grep -qF "$HDA"; then
+    # 【修复2】增加 || true 防止 grep 找不到匹配项退出码非 0
+    for pid in $(pgrep -f qemu-system 2>/dev/null || true); do
+        if tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | grep -qF "$HDA" || true; then
             conflict="$pid"
             break
         fi
@@ -404,7 +383,6 @@ PID: $conflict
     fi
     return 0
 }
-
 check_uefi_firmware(){
     if [[ "$TARGET_ARCH" == "aarch64" ]]; then
         if [ ! -f "$UEFI_CODE" ]; then
@@ -445,7 +423,6 @@ check_uefi_firmware(){
     fi
     return $EXIT_OK
 }
-
 choose_arch(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "选择CPU架构" --radiolist \
@@ -477,7 +454,6 @@ choose_arch(){
     fi
     msgbox "架构切换完成，硬件参数自动重置适配"
 }
-
 choose_x86_machine(){
     if [[ "$TARGET_ARCH" != "x86_64" ]];then
         msgbox "仅x86_64架构支持切换主板"
@@ -499,7 +475,6 @@ q35=UEFI主板，需要OVMF固件" 16 66 2 \
     fi
     msgbox "主板切换完成，显卡自动适配"
 }
-
 choose_cpu(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "CPU型号" --radiolist \
@@ -511,7 +486,6 @@ choose_cpu(){
     [ -z "$SEL" ] && return
     CPU="$SEL"
 }
-
 choose_memory(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "分配内存 MB" --radiolist \
@@ -524,7 +498,6 @@ choose_memory(){
     [ -z "$SEL" ] && return
     MEM="$SEL"
 }
-
 choose_smp(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "CPU核心数" --radiolist \
@@ -537,7 +510,6 @@ choose_smp(){
     [ -z "$SEL" ] && return
     SMP="$SEL"
 }
-
 choose_gpu(){
     local SEL
     if [[ "$TARGET_ARCH" == "x86_64" && "$MACHINE" == "pc" ]];then
@@ -555,7 +527,6 @@ choose_gpu(){
     [ -z "$SEL" ] && return
     GPU="$SEL"
 }
-
 choose_sound(){
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" --title "声卡设置" --radiolist \
@@ -567,7 +538,6 @@ choose_sound(){
     SOUND_DEV="$SEL"
     msgbox "声卡设置已更新：$SOUND_DEV"
 }
-
 select_x86_ovmf_code(){
     local path
     path=$(dialog --backtitle "$BACKTITLE" --title "自定义x86 OVMF_CODE.fd" --fselect "$STORAGE_ROOT" 17 66 2>&1 >/dev/tty)
@@ -578,13 +548,11 @@ select_x86_ovmf_code(){
         msgbox "已使用自定义OVMF_CODE，自动切换q35主板"
     fi
 }
-
 select_x86_ovmf_vars(){
     local path
     path=$(dialog --backtitle "$BACKTITLE" --title "自定义x86 OVMF_VARS.fd" --fselect "$STORAGE_ROOT" 17 66 2>&1 >/dev/tty)
     [[ -n "$path" ]] && X86_OVMF_VARS="$path" && msgbox "已使用自定义OVMF_VARS覆盖系统固件"
 }
-
 vnc_setting_menu(){
 while true; do
     local SEL
@@ -629,7 +597,6 @@ while true; do
     esac
 done
 }
-
 network_setting_menu(){
 while true; do
     local SEL
@@ -677,7 +644,6 @@ while true; do
     esac
 done
 }
-
 extra_disk_menu(){
 while true;do
     local MENU_ITEMS=()
@@ -706,7 +672,6 @@ while true;do
     fi
 done
 }
-
 snapshot_menu(){
     if [[ -z "$HDA" || ! "$HDA" =~ \.qcow2$ || ! -f "$HDA" ]];then
         msgbox "快照仅支持qcow2主磁盘，请先选择主qcow2磁盘"
@@ -752,46 +717,61 @@ $OUT"
         esac
     done
 }
-
 custom_args_menu(){
     TMP=$(dialog --backtitle "$BACKTITLE" --title "自定义QEMU追加参数" --inputbox "高级选项，谨慎填写" 12 72 "$CUSTOM_ARGS" 2>&1 >/dev/tty) || true
     CUSTOM_ARGS="$TMP"
     msgbox "自定义参数已保存"
 }
 
+
 save_config(){
     local NAME
-    NAME=$(dialog --backtitle "$BACKTITLE" --title "保存配置文件" --inputbox "输入配置名称" 9 48 2>&1 >/dev/tty) || true
+    NAME=$(dialog --backtitle "$BACKTITLE" --title "保存为启动脚本" --inputbox "输入脚本名称 (如 alpine)" 9 48 2>&1 >/dev/tty) || true
     [ -z "$NAME" ] && return
-    local CONF_PATH="$CONF_DIR/$NAME.conf"
+    local SCRIPT_PATH="$CONF_DIR/$NAME.sh"
+
+   
+    build_cmd
+    if [ $? -ne 0 ]; then
+        return
+    fi
+
     {
-cat <<CFG
-TARGET_ARCH=$TARGET_ARCH
-MACHINE=$MACHINE
-CPU=$CPU
-SMP=$SMP
-MEM=$MEM
-GPU=$GPU
-SOUND_DEV=$SOUND_DEV
-HDA=$HDA
-CDROM=$CDROM
-UEFI_VARS=$UEFI_VARS
-UEFI_CODE=$UEFI_CODE
-X86_OVMF_CODE=$X86_OVMF_CODE
-X86_OVMF_VARS=$X86_OVMF_VARS
-VNC_LISTEN_ADDR=$VNC_LISTEN_ADDR
-VNC_DISPLAY=$VNC_DISPLAY
-VNC_PASSWD=$VNC_PASSWD
-NET_MODE=$NET_MODE
-DNS_MAIN=$DNS_MAIN
-DNS_ALT=$DNS_ALT
-SSH_FORWARD_PORT=$SSH_FORWARD_PORT
-CUSTOM_ARGS='$CUSTOM_ARGS'
-EXTRA_DISKS=(${EXTRA_DISKS[*]@Q})
-CFG
-    } > "$CONF_PATH"
-    msgbox "配置已保存：$NAME"
+        echo "#!/data/data/com.termux/files/usr/bin/bash"
+        echo "# ===== VM 配置参数 (请勿删除) ====="
+        echo "# TARGET_ARCH=$TARGET_ARCH"
+        echo "# MACHINE=$MACHINE"
+        echo "# CPU=$CPU"
+        echo "# SMP=$SMP"
+        echo "# MEM=$MEM"
+        echo "# GPU=$GPU"
+        echo "# SOUND_DEV=$SOUND_DEV"
+        echo "# HDA=$HDA"
+        echo "# CDROM=$CDROM"
+        echo "# UEFI_VARS=$UEFI_VARS"
+        echo "# UEFI_CODE=$UEFI_CODE"
+        echo "# X86_OVMF_CODE=$X86_OVMF_CODE"
+        echo "# X86_OVMF_VARS=$X86_OVMF_VARS"
+        echo "# VNC_LISTEN_ADDR=$VNC_LISTEN_ADDR"
+        echo "# VNC_DISPLAY=$VNC_DISPLAY"
+        echo "# VNC_PASSWD=$VNC_PASSWD"
+        echo "# NET_MODE=$NET_MODE"
+        echo "# DNS_MAIN=$DNS_MAIN"
+        echo "# DNS_ALT=$DNS_ALT"
+        echo "# SSH_FORWARD_PORT=$SSH_FORWARD_PORT"
+        echo "# CUSTOM_ARGS='$CUSTOM_ARGS'"
+        echo "# EXTRA_DISKS=(${EXTRA_DISKS[*]@Q})"
+        echo "# ==================================="
+        echo ""
+        echo "# 启动命令"
+        printf '%q ' "${CMD[@]}"
+        echo ""
+    } > "$SCRIPT_PATH"
+    
+    chmod +x "$SCRIPT_PATH"
+    msgbox "启动脚本已保存并赋予执行权限：\n$SCRIPT_PATH\n\n可以直接在终端运行此脚本。"
 }
+
 
 load_config(){
     local FILES=()
@@ -799,18 +779,34 @@ load_config(){
     local IDX=1
     while IFS= read -r -d '' f;do
         FILES+=("$f")
-        LIST+=("$IDX" "$(basename "$f" .conf)")
+        LIST+=("$IDX" "$(basename "$f" .sh)")
         IDX=$((IDX+1))
-    done < <(find "$CONF_DIR" -maxdepth 1 -name "*.conf" -print0 | sort -z)
+    done < <(find "$CONF_DIR" -maxdepth 1 -name "*.sh" -print0 | sort -z)
+    
     if [[ ${#FILES[@]} -eq 0 ]];then
-        msgbox "无已保存配置"
+        msgbox "无已保存的启动脚本"
         return
     fi
+    
     local SEL_IDX
-    SEL_IDX=$(dialog --backtitle "$BACKTITLE" --title "加载配置" --menu "选择存档配置" 15 56 8 "${LIST[@]}" 2>&1 >/dev/tty) || true
+    SEL_IDX=$(dialog --backtitle "$BACKTITLE" --title "加载配置" --menu "选择要加载的脚本" 15 56 8 "${LIST[@]}" 2>&1 >/dev/tty) || true
     [ -z "$SEL_IDX" ] && return
-    source "${FILES[$((SEL_IDX-1))]}"
-    msgbox "配置已加载"
+    
+    local SCRIPT_TO_RUN="${FILES[$((SEL_IDX-1))]}"
+    
+   
+    eval "$(grep '^# [A-Z_]*=' "$SCRIPT_TO_RUN" | sed 's/^# //')"
+    
+   
+    if dialog --backtitle "$BACKTITLE" --title "加载成功" --yesno "配置已加载到界面\n\n是否立即运行该脚本？" 10 60; then
+        clear
+        echo "正在执行: $SCRIPT_TO_RUN"
+        bash "$SCRIPT_TO_RUN"
+        echo -e "\n虚拟机已终止，按任意键返回"
+        read -n1
+    else
+        msgbox "参数已恢复到主菜单，可修改后重新保存或启动"
+    fi
 }
 
 build_cmd(){
@@ -898,13 +894,23 @@ build_cmd(){
     fi
     return 0
 }
-
 start_vm(){
+   
+    if [ ! -t 0 ]; then
+        build_cmd
+        if [ $? -ne 0 ]; then
+            exit $EXIT_QEMU_FAIL
+        fi
+        
+        exec "${CMD[@]}" >> "$GLOBAL_LOG" 2>&1
+    fi
+
     check_qemu_running || return
     if [[ -z "$HDA" ]];then
         msgbox "先选择或新建qcow2虚拟磁盘"
         return
     fi
+
     if [[ "$TARGET_ARCH" == "aarch64" && -z "$UEFI_VARS" ]];then
         dialog --backtitle "$BACKTITLE" --title "提示" --yesno "ARM64未设置vars.fd，BIOS设置无法保存，是否继续" 14 64 || true
         [ $? -ne 0 ] && return
@@ -936,12 +942,12 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY
     echo "时间：$(date '+%Y-%m-%d %H:%M:%S')" >> "$VM_LOG"
     echo "命令：${CMD[*]}" >> "$VM_LOG"
     echo "==========================================================" >> "$VM_LOG"
-    "${CMD[@]}" 2>&1 | tee "$VM_LOG"
+   
+    "${CMD[@]}" >> "$VM_LOG" 2>&1
     echo -e "\nQEMU进程已终止"
     echo "\n"
-    read -n1 -p "按任意键返回主页面"
+    read -n1 -p "按任意键返回"
 }
-
 check_qcow2(){
     if [[ -z "$HDA" ]];then
         msgbox "先选择虚拟磁盘文件（*.qcow2）"
@@ -952,12 +958,10 @@ check_qcow2(){
     qemu-img check "$HDA"
     read -n1 -p "校验完成，按任意键返回"
 }
-
 view_log(){
     local VM_LOG=$(get_vm_log_path)
     dialog --backtitle "$BACKTITLE" --title "运行日志" --tailbox "$VM_LOG" 21 72
 }
-
 main_menu(){
     while true;do
         DISK_PREVIEW=$(basename "$HDA" 2>/dev/null)
@@ -1023,8 +1027,8 @@ main_menu(){
             "SNAP" "快照管理"
             "ARG" "[高级]额外QEMU参数"
             "UPD" "手动检查版本更新"
-            "S" "保存当前配置"
-            "L" "读取已有配置"
+            "S" "保存当前配置[shell]脚本)"
+            "L" "读取已有shell配置脚本"
             "C" "检查磁盘文件 [*.qcow2]"
             "R" "查看Qemu日志"
             "RUN" "按当前配置启动Qemu"
@@ -1032,7 +1036,7 @@ main_menu(){
             "EXIT" "退出工具"
         )
         local OPT
-        printf '\n%.0s' {1..6}
+        printf '\n%.0s' {1..3}
                 OPT=$(dialog --backtitle "$BACKTITLE" --title "Qemu manager" \
 --menu "当前配置
 架构(Arch):$TARGET_ARCH 主板(Type):$MACHINE CPU:$CPU 核心(Cores):$SMP 内存(RAM):${MEM}M 显卡(Graphics):$GPU 声卡:$SOUND_DEV
@@ -1064,7 +1068,7 @@ VNC:$VNC_LISTEN_ADDR:$VNC_DISPLAY 网络:$NET_MODE SSH端口:$SSH_FORWARD_PORT" 
         UPD)
             clear
             check_update
-            read -n1 -p "按任意键返回菜单"
+            read -n1 -p "按任意键返回"
         ;;
         S) save_config ;;
         L) load_config ;;
